@@ -184,7 +184,7 @@ document.getElementById('next').onclick=async()=>{if(a.index===a.questions.lengt
 document.getElementById('examSubmit').onclick=()=>submitExam(false);
 document.querySelectorAll('[data-i]').forEach(b=>b.onclick=async()=>{await flushQuestionTime();a.visited[q.id]=true;await markQuestionVisited();a.index=Number(b.dataset.i);a.questionTiming={questionId:null,startedAt:0};renderExam();});
 timer=setInterval(()=>updateTimer(a),1000);updateTimer(a);clearInterval(a.flushTimer);a.flushTimer=setInterval(()=>{if(state.attempt)flushQuestionTime();},5000);markQuestionVisited();}
-async function submitExam(auto){if(!state.attempt)return;const {data,error}=await sb.rpc('submit_attempt',{p_attempt_id:state.attempt.id});if(error){alert(error.message);return;}clearInterval(timer);const r=data?.[0]||data;state.attempt=null;state.tab='progress';alert(auto?'Time expired. Test auto-submitted.':`Test submitted. Score: ${r?.score??'saved'}`);renderStudent();}
+function updateTimer(a){const total=a.duration*60000,left=Math.max(0,total-(Date.now()-new Date(a.startedAt).getTime())),m=Math.floor(left/60000),s=Math.floor(left/1000)%60;const el=document.getElementById('timer');if(el)el.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;if(left<=0){clearInterval(timer);submitExam(true);}}async function submitExam(auto){if(!state.attempt||state.attempt.submitting)return;state.attempt.submitting=true;const {data,error}=await sb.rpc('submit_attempt',{p_attempt_id:state.attempt.id});if(error){alert(error.message);return;}clearInterval(timer);const r=data?.[0]||data;state.attempt=null;state.tab='progress';alert(auto?'Time expired. Test auto-submitted.':`Test submitted. Score: ${r?.score??'saved'}`);renderStudent();}
 boot();
 
 </script>
