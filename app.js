@@ -35,7 +35,58 @@ async function createTest(){const title=document.getElementById('tTitle').value.
 async function previewImport(){const qf=document.getElementById('qFile').files[0],af=document.getElementById('aFile').files[0],box=document.getElementById('importPreview');if(!qf){box.innerHTML='<div class="notice">Choose a question file first.</div>';return;}box.innerHTML='<div class="notice">Reading files…</div>';try{const qt=await readFile(qf),at=af?await readFile(af):'';const items=parseQuestions(qt,at);if(!items.length){box.innerHTML='<div class="notice">No structured questions were detected. Use a clean PDF/DOCX or a text/CSV/XLSX file where each question has four options.</div>';return;}window.__importItems={items,qf};box.innerHTML=`<div class="success">Detected <b>${items.length}</b> question(s). Review the preview below.</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Question</th><th>Options</th><th>Answer</th></tr></thead><tbody>${items.slice(0,80).map(x=>`<tr><td>${esc(x.number)}</td><td>${esc(x.question)}</td><td>${x.options.map((o,i)=>`${String.fromCharCode(65+i)}. ${esc(o)}`).join('<br>')}</td><td>${x.correct_option||'Review pending'}</td></tr>`).join('')}</tbody></table></div><div class="row gap top16"><button id="importNow" class="btn primary">Import ${items.length} Questions</button></div>`;document.getElementById('importNow').onclick=importNow;}catch(e){box.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
 async function importNow(){const {items,qf}=window.__importItems||{};if(!items)return;const base={subject:document.getElementById('impSubject').value.trim(),exam_name:document.getElementById('impExam').value.trim(),chapter:document.getElementById('impChapter').value.trim(),topic:document.getElementById('impTopic').value.trim(),source_name:qf.name};if(!base.subject){alert('Please enter Subject.');return;}let saved=0;try{for(const x of items){if(!x.correct_option)continue;const ins=await sb.from('questions').insert({subject:base.subject,class_name:base.exam_name,exam_name:base.exam_name,chapter:base.chapter,topic:base.topic,source_name:base.source_name,source_question_number:String(x.number||''),question_text:x.question,option_a:x.options[0],option_b:x.options[1],option_c:x.options[2],option_d:x.options[3],marks:1,negative_marks:0,is_active:true,created_by:profile.id}).select('id').single();if(ins.error)throw new Error(ins.error.message);const ar=await sb.from('question_answers').insert({question_id:ins.data.id,correct_option:x.correct_option,explanation:x.explanation||''});if(ar.error)throw new Error(ar.error.message);saved++;}document.getElementById('importPreview').innerHTML=`<div class="success">Imported <b>${saved}</b> verified question(s). Questions without a detected answer were not imported.</div>`;delete window.__importItems;await renderTeacher();}catch(e){document.getElementById('importPreview').innerHTML=`<div class="error">Import stopped: ${esc(e.message)}. ${saved} question(s) were saved before the error.</div>`;}}
 async function readFile(file){const ext=file.name.toLowerCase().split('.').pop();if(ext==='txt'||ext==='csv')return await file.text();if(ext==='docx'){const b=await file.arrayBuffer();return (await window.mammoth.extractRawText({arrayBuffer:b})).value;}if(ext==='xlsx'||ext==='xls'){const b=await file.arrayBuffer(),wb=XLSX.read(b,{type:'array'});return wb.SheetNames.map(n=>XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n');}if(ext==='pdf'){const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;let out='';for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i),tc=await p.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n';}return out;}throw new Error('Unsupported file type');}
-function parseQuestions(text,answerText=''){const lines=text.replace(/\r/g,'').split(/\n/).map(s=>s.trim()).filter(Boolean),ans={};for(const m of answerText.matchAll(/(?:Que\.?|Q\.?|Question)\s*(\d+)\s*[:.-]?\s*([1-4A-D])/gi)){const v=m[2].toUpperCase();ans[Number(m[1])]=['1','2','3','4'].includes(v)?'ABCD'[Number(v)-1]:v;}for(const m of answerText.matchAll(/(?:^|\n)\s*(\d+)\s+[\(\[]?([1-4A-D])[\)\]]?(?=\s|$)/gmi)){ans[Number(m[1])]=/^[1-4]$/.test(m[2])?'ABCD'[Number(m[2])-1]:m[2].toUpperCase();}const out=[];let i=0;while(i<lines.length){const qm=lines[i].match(/^(\d+)\.\s+(.+)/);if(!qm){i++;continue;}const number=Number(qm[1]);let question=qm[2];i++;const opts=[];while(i<lines.length){const om=lines[i].match(/^\((\d)\)\s+(.+)/);if(om){opts[Number(om[1])-1]=om[2];i++;continue;}if(/^\d+\.\s+/.test(lines[i]))break;question+=' '+lines[i];i++;}if(opts.length===4&&opts.every(Boolean))out.push({number,question,options:opts,correct_option:ans[number]||null});}return out;}
+function parseQuestions(text,answerText=''){
+  const lines=text.replace(/\r/g,'').split(/\n/).map(s=>s.trim()).filter(Boolean);
+  const ans={};
+
+  // Supports grouped answer-key tables such as:
+  // Que. 1 2 3 ... 20
+  // Ans. 3 3 2 ... 1
+  // and simple forms such as: Que. 1 / Ans. 2
+  for(const m of answerText.matchAll(/(?:Que\.?|Q\.?|Question)\s*([\d\s,.-]+?)\s*(?:Ans\.?|Answer)\s*([1-4A-D\s,.-]+)/gi)){
+    const nums=(m[1].match(/\d+/g)||[]).map(Number);
+    const vals=(m[2].match(/[1-4A-D]/gi)||[]).map(v=>v.toUpperCase());
+    const n=Math.min(nums.length,vals.length);
+    for(let k=0;k<n;k++) ans[nums[k]]= /^[1-4]$/.test(vals[k]) ? 'ABCD'[Number(vals[k])-1] : vals[k];
+  }
+
+  // Also supports one-answer-per-line formats such as:
+  // 1 2 / 2 B / Q3 C / Question 4: 1
+  for(const m of answerText.matchAll(/(?:^|\n)\s*(?:Q(?:uestion)?\.?\s*)?(\d+)\s*[:.)-]?\s*([1-4A-D])(?:\s|$)/gmi)){
+    const v=m[2].toUpperCase();
+    ans[Number(m[1])] = /^[1-4]$/.test(v) ? 'ABCD'[Number(v)-1] : v;
+  }
+
+  // Catch a compact single pair such as "Que. 1 Ans. 2" even without line breaks.
+  for(const m of answerText.matchAll(/(?:Que\.?|Q\.?|Question)\s*(\d+)\s*(?:[:.-]?\s*)?(?:Ans\.?|Answer)\s*[:.-]?\s*([1-4A-D])/gi)){
+    const v=m[2].toUpperCase();
+    ans[Number(m[1])] = /^[1-4]$/.test(v) ? 'ABCD'[Number(v)-1] : v;
+  }
+
+  const out=[];
+  let i=0;
+  while(i<lines.length){
+    const qm=lines[i].match(/^(\d+)\.\s+(.+)/);
+    if(!qm){i++;continue;}
+    const number=Number(qm[1]);
+    let question=qm[2];
+    i++;
+    const opts=[];
+    while(i<lines.length){
+      const om=lines[i].match(/^\((\d)\)\s+(.+)/);
+      if(om){opts[Number(om[1])-1]=om[2];i++;continue;}
+      if(/^\d+\.\s+/.test(lines[i])) break;
+      // Ignore answer-key/printing noise after a complete question.
+      if(/^ANSWERS? KEY$/i.test(lines[i]) || /^Que\.?\s+/i.test(lines[i])) break;
+      question+=' '+lines[i];
+      i++;
+    }
+    if(opts.length===4 && opts.every(Boolean)){
+      out.push({number,question,options:opts,correct_option:ans[number]||null});
+    }
+  }
+  return out;
+}
 async function renderStudent(){const {data:tests}=await sb.rpc('get_student_tests');const {data:prog}=await sb.from('my_progress').select('*').order('submitted_at',{ascending:false});state.student.tests=tests||[];state.student.progress=prog||[];let body=nav([['dashboard','Dashboard'],['tests','My Tests'],['progress','My Progress'],['account','My Account']]);if(state.tab==='dashboard')body+=studentDashboard();if(state.tab==='tests')body+=studentTests();if(state.tab==='progress')body+=studentProgress();if(state.tab==='account')body+=accountPanel();if(state.tab==='exam')return renderExam();app.innerHTML=shell('Student Dashboard',`Welcome, ${profile.full_name||'Student'} · ${profile.user_code||'S001'}`,body,btn('Logout','logout','secondary'));bindTabs();document.querySelectorAll('[data-start]').forEach(b=>b.onclick=()=>startTest(b.dataset.start));}
 function studentDashboard(){const p=state.student.progress,correct=p.reduce((a,x)=>a+(x.correct_count||0),0),wrong=p.reduce((a,x)=>a+(x.wrong_count||0),0),skipped=p.reduce((a,x)=>a+(x.skipped_count||0),0),attempted=correct+wrong,acc=attempted?((correct/attempted)*100):0;return `<section class="stats"><div class="card stat"><div class="muted">Tests Taken</div><strong>${p.length}</strong></div><div class="card stat"><div class="muted">Correct</div><strong>${correct}</strong></div><div class="card stat"><div class="muted">Wrong</div><strong>${wrong}</strong></div><div class="card stat"><div class="muted">Accuracy</div><strong>${acc.toFixed(1)}%</strong></div></section><section class="card"><h2>My Progress</h2><p class="muted">Your dashboard shows only your own history and performance.</p><div class="progressbar"><span style="width:${Math.min(100,acc)}%"></span></div><p class="small muted top16">Total skipped: ${skipped}</p></section>`;}
 function studentTests(){return `<section class="card"><h2>Assigned Tests</h2>${state.student.tests.map(t=>`<div class="card"><div class="section-title"><div><h3>${esc(t.title)}</h3><p class="muted">${t.question_count} questions · ${t.duration_minutes} minutes</p></div><button class="btn primary" data-start="${t.id}">${t.completed?'View Report':'Start Test'}</button></div>${t.completed?`<p class="small muted">Completed on ${fmt(t.submitted_at)}</p>`:''}</div>`).join('')||empty('No tests assigned yet.')}</section>`;}
