@@ -35,35 +35,87 @@ async function changePassword(){const box=app.querySelector('#newPw');if(!box)re
 async function createTest(){const title=document.getElementById('tTitle').value.trim(),duration=Number(document.getElementById('tDuration').value),marks=Number(document.getElementById('tMarks').value),neg=Number(document.getElementById('tNeg').value),instructions=document.getElementById('tInstructions').value.trim(),students=[...document.getElementById('tStudents').selectedOptions].map(o=>o.value),qids=[...document.querySelectorAll('.tq:checked')].map(x=>x.value),msg=document.getElementById('testMsg');if(!title||!duration||!qids.length||!students.length){msg.textContent='Enter test details, select at least one student and select questions.';return;}msg.textContent='Creating test…';const ins=await sb.from('tests').insert({title,description:instructions,duration_minutes:duration,default_marks:marks,default_negative_marks:neg,is_published:true,created_by:profile.id}).select('id').single();if(ins.error){msg.textContent=ins.error.message;return;}const tq=qids.map((question_id,i)=>({test_id:ins.data.id,question_id,question_order:i+1,marks,negative_marks:neg}));const tqr=await sb.from('test_questions').insert(tq);if(tqr.error){await sb.from('tests').delete().eq('id',ins.data.id);msg.textContent=tqr.error.message;return;}const as=students.map(student_id=>({test_id:ins.data.id,student_id,assigned_by:profile.id,status:'assigned'}));const ar=await sb.from('test_assignments').insert(as);if(ar.error){msg.textContent=ar.error.message;return;}msg.textContent=`Test created and assigned to ${students.length} student(s).`;await renderTeacher();}
 async function previewImport(){const qf=document.getElementById('qFile').files[0],af=document.getElementById('aFile').files[0],box=document.getElementById('importPreview');if(!qf){box.innerHTML='<div class="notice">Choose a question file first.</div>';return;}box.innerHTML='<div class="notice">Reading files…</div>';try{const qt=await readFile(qf),at=af?await readFile(af):'';const items=parseQuestions(qt,at);if(!items.length){box.innerHTML='<div class="notice">No structured questions were detected. Use a clean PDF/DOCX or a text/CSV/XLSX file where each question has four options.</div>';return;}window.__importItems={items,qf};box.innerHTML=`<div class="success">Detected <b>${items.length}</b> question(s). Review the preview below.</div><div class="table-wrap"><table><thead><tr><th>#</th><th>Question</th><th>Options</th><th>Answer</th></tr></thead><tbody>${items.slice(0,80).map(x=>`<tr><td>${esc(x.number)}</td><td>${esc(x.question)}</td><td>${x.options.map((o,i)=>`${String.fromCharCode(65+i)}. ${esc(o)}`).join('<br>')}</td><td>${x.correct_option||'Review pending'}</td></tr>`).join('')}</tbody></table></div><div class="row gap top16"><button id="importNow" class="btn primary">Import ${items.length} Questions</button></div>`;document.getElementById('importNow').onclick=importNow;}catch(e){box.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
 async function importNow(){const {items,qf}=window.__importItems||{};if(!items)return;const base={subject:document.getElementById('impSubject').value.trim(),exam_name:document.getElementById('impExam').value.trim(),chapter:document.getElementById('impChapter').value.trim(),topic:document.getElementById('impTopic').value.trim(),source_name:qf.name};if(!base.subject){alert('Please enter Subject.');return;}let saved=0;try{for(const x of items){if(!x.correct_option)continue;const ins=await sb.from('questions').insert({subject:base.subject,class_name:base.exam_name,exam_name:base.exam_name,chapter:base.chapter,topic:base.topic,source_name:base.source_name,source_question_number:String(x.number||''),question_text:x.question,option_a:x.options[0],option_b:x.options[1],option_c:x.options[2],option_d:x.options[3],marks:1,negative_marks:0,is_active:true,created_by:profile.id}).select('id').single();if(ins.error)throw new Error(ins.error.message);const ar=await sb.from('question_answers').insert({question_id:ins.data.id,correct_option:x.correct_option,explanation:x.explanation||''});if(ar.error)throw new Error(ar.error.message);saved++;}document.getElementById('importPreview').innerHTML=`<div class="success">Imported <b>${saved}</b> verified question(s). Questions without a detected answer were not imported.</div>`;delete window.__importItems;await renderTeacher();}catch(e){document.getElementById('importPreview').innerHTML=`<div class="error">Import stopped: ${esc(e.message)}. ${saved} question(s) were saved before the error.</div>`;}}
-async function readFile(file){const ext=file.name.toLowerCase().split('.').pop();if(ext==='txt'||ext==='csv')return await file.text();if(ext==='docx'){const b=await file.arrayBuffer();return (await window.mammoth.extractRawText({arrayBuffer:b})).value;}if(ext==='xlsx'||ext==='xls'){const b=await file.arrayBuffer(),wb=XLSX.read(b,{type:'array'});return wb.SheetNames.map(n=>XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n');}if(ext==='pdf'){const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;let out='';for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i),tc=await p.getTextContent();out+=tc.items.map(x=>x.str).join(' ')+'\n';}return out;}throw new Error('Unsupported file type');}
-function parseQuestions(text,answerText=''){
-  const lines=text.replace(/\r/g,'').split(/\n/).map(s=>s.trim()).filter(Boolean);
+async function readFile(file){
+  const ext=file.name.toLowerCase().split('.').pop();
+  if(ext==='txt'||ext==='csv') return await file.text();
+  if(ext==='docx'){
+    const b=await file.arrayBuffer();
+    return (await window.mammoth.extractRawText({arrayBuffer:b})).value;
+  }
+  if(ext==='xlsx'||ext==='xls'){
+    const b=await file.arrayBuffer(),wb=XLSX.read(b,{type:'array'});
+    return wb.SheetNames.map(n=>XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n');
+  }
+  if(ext==='pdf'){
+    if(!window.pdfjsLib) throw new Error('PDF reader is not loaded. Refresh the page and try again.');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const data=new Uint8Array(await file.arrayBuffer());
+    const pdf=await window.pdfjsLib.getDocument({data}).promise;
+    let out='';
+    for(let pageNo=1; pageNo<=pdf.numPages; pageNo++){
+      const page=await pdf.getPage(pageNo);
+      const tc=await page.getTextContent();
+      const items=tc.items.map(it=>({
+        str:String(it.str||''),
+        x:Number(it.transform?.[4]||0),
+        y:Number(it.transform?.[5]||0),
+        h:Number(it.height||0)
+      })).filter(it=>it.str.trim());
+      // Reconstruct readable lines from positioned PDF text items.
+      const rows=[];
+      for(const item of items){
+        let row=rows.find(r=>Math.abs(r.y-item.y)<=3);
+        if(!row){row={y:item.y,items:[]};rows.push(row);}
+        row.items.push(item);
+      }
+      rows.sort((a,b)=>b.y-a.y);
+      for(const row of rows){
+        row.items.sort((a,b)=>a.x-b.x);
+        const line=row.items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
+        if(line) out+=line+'\n';
+      }
+      out+='\n';
+    }
+    return out;
+  }
+  throw new Error('Unsupported file type');
+}
+function normalizeAnswer(value){
+  const s=String(value||'').trim().toUpperCase();
+  if(/^[1-4]$/.test(s)) return 'ABCD'[Number(s)-1];
+  if(/^[A-D]$/.test(s)) return s;
+  return null;
+}
+function parseAnswerKey(answerText=''){
+  const text=String(answerText||'').replace(/\r/g,'');
+  const lines=text.split(/\n+/).map(s=>s.trim()).filter(Boolean);
   const ans={};
-
-  // Supports grouped answer-key tables such as:
-  // Que. 1 2 3 ... 20
-  // Ans. 3 3 2 ... 1
-  // and simple forms such as: Que. 1 / Ans. 2
-  for(const m of answerText.matchAll(/(?:Que\.?|Q\.?|Question)\s*([\d\s,.-]+?)\s*(?:Ans\.?|Answer)\s*([1-4A-D\s,.-]+)/gi)){
-    const nums=(m[1].match(/\d+/g)||[]).map(Number);
-    const vals=(m[2].match(/[1-4A-D]/gi)||[]).map(v=>v.toUpperCase());
-    const n=Math.min(nums.length,vals.length);
-    for(let k=0;k<n;k++) ans[nums[k]]= /^[1-4]$/.test(vals[k]) ? 'ABCD'[Number(vals[k])-1] : vals[k];
+  for(let i=0;i<lines.length;i++){
+    const qmatch=lines[i].match(/^(?:QUES|QUE|QUESTIONS?)\s+(.+)$/i);
+    if(!qmatch) continue;
+    const nums=(qmatch[1].match(/\d+/g)||[]).map(Number);
+    const amatch=(lines[i+1]||'').match(/^ANS(?:WERS?|WER)?\s+(.+)$/i);
+    if(amatch){
+      const vals=(amatch[1].match(/[A-D1-4]/gi)||[]).map(normalizeAnswer).filter(Boolean);
+      for(let k=0;k<Math.min(nums.length,vals.length);k++) ans[nums[k]]=vals[k];
+      i++;
+    }
   }
-
-  // Also supports one-answer-per-line formats such as:
-  // 1 2 / 2 B / Q3 C / Question 4: 1
-  for(const m of answerText.matchAll(/(?:^|\n)\s*(?:Q(?:uestion)?\.?\s*)?(\d+)\s*[:.)-]?\s*([1-4A-D])(?:\s|$)/gmi)){
-    const v=m[2].toUpperCase();
-    ans[Number(m[1])] = /^[1-4]$/.test(v) ? 'ABCD'[Number(v)-1] : v;
+  // Supports: 91 B / Q91 B / Question 91: B / 91. B
+  for(const m of text.matchAll(/(?:^|\n)\s*(?:Q(?:UES|UESTION)?\.?\s*)?(\d+)\s*[:.)-]?\s*([A-D1-4])\b/gim)){
+    const a=normalizeAnswer(m[2]);
+    if(a) ans[Number(m[1])]=a;
   }
-
-  // Catch a compact single pair such as "Que. 1 Ans. 2" even without line breaks.
-  for(const m of answerText.matchAll(/(?:Que\.?|Q\.?|Question)\s*(\d+)\s*(?:[:.-]?\s*)?(?:Ans\.?|Answer)\s*[:.-]?\s*([1-4A-D])/gi)){
-    const v=m[2].toUpperCase();
-    ans[Number(m[1])] = /^[1-4]$/.test(v) ? 'ABCD'[Number(v)-1] : v;
+  // Supports: Que. 1 Ans. 2
+  for(const m of text.matchAll(/(?:QUE|Q|QUESTION)\.?\s*(\d+)\s*(?:[:.)-]?\s*)?(?:ANS|ANSWER)\.?\s*[:.)-]?\s*([A-D1-4])/gi)){
+    const a=normalizeAnswer(m[2]);
+    if(a) ans[Number(m[1])]=a;
   }
-
+  return ans;
+}
+function parseQuestions(text,answerText=''){
+  const lines=String(text||'').replace(/\r/g,'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  const ans=parseAnswerKey(answerText);
   const out=[];
   let i=0;
   while(i<lines.length){
@@ -74,16 +126,32 @@ function parseQuestions(text,answerText=''){
     i++;
     const opts=[];
     while(i<lines.length){
-      const om=lines[i].match(/^\((\d)\)\s+(.+)/);
-      if(om){opts[Number(om[1])-1]=om[2];i++;continue;}
-      if(/^\d+\.\s+/.test(lines[i])) break;
-      // Ignore answer-key/printing noise after a complete question.
-      if(/^ANSWERS? KEY$/i.test(lines[i]) || /^Que\.?\s+/i.test(lines[i])) break;
-      question+=' '+lines[i];
+      const line=lines[i];
+      // Accept both (A) text / A. text and (1) text / 1. text.
+      const om=line.match(/^\(?([A-D1-4])\)?\s*(?:[.:-])\s*(.+)$/i);
+      if(om){
+        const key=om[1].toUpperCase();
+        const idx=/^[1-4]$/.test(key)?Number(key)-1:'ABCD'.indexOf(key);
+        if(idx>=0) opts[idx]=om[2].trim();
+        i++;
+        continue;
+      }
+      // Some PDFs use (A) without punctuation after the option marker.
+      const om2=line.match(/^\(?([A-D])\)\s+(.+)$/i);
+      if(om2){
+        const idx='ABCD'.indexOf(om2[1].toUpperCase());
+        if(idx>=0) opts[idx]=om2[2].trim();
+        i++;
+        continue;
+      }
+      if(/^\d+\.\s+/.test(line)) break;
+      if(/^(?:ANSWERS? KEY|QUES\s+\d+|ANS\s+[A-D1-4])/i.test(line)) break;
+      question+=' '+line;
       i++;
     }
-    if(opts.length===4 && opts.every(Boolean)){
-      out.push({number,question,options:opts,correct_option:ans[number]||null});
+    const clean=opts.slice(0,4).map(v=>String(v||'').trim());
+    if(clean.length===4 && clean.every(Boolean)){
+      out.push({number,question:question.trim(),options:clean,correct_option:ans[number]||null});
     }
   }
   return out;
