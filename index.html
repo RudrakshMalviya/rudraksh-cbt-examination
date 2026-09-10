@@ -27,7 +27,7 @@ let user=null, profile=null, timer=null;
 const state={tab:'dashboard',teacher:{questions:[],tests:[],students:[],reports:[]},student:{tests:[],progress:[],attemptAnswers:{}},attempt:null};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=v=>v?new Date(v).toLocaleString():'—';
-const money=v=>Number(v||0).toFixed(2);const fmtSeconds=s=>{s=Math.max(0,Math.floor(Number(s||0)));const hh=Math.floor(s/3600),mm=Math.floor((s%3600)/60),ss=s%60;return hh?`${hh}h ${String(mm).padStart(2,'0')}m ${String(ss).padStart(2,'0')}s`:`${mm}m ${String(ss).padStart(2,'0')}s`;};const fmtSeconds=s=>{s=Math.max(0,Math.floor(Number(s||0)));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return h?`${h}h ${String(m).padStart(2,'0')}m ${String(sec).padStart(2,'0')}s`:`${m}m ${String(sec).padStart(2,'0')}s`;};
+const money=v=>Number(v||0).toFixed(2);const fmtSeconds=s=>{s=Math.max(0,Math.floor(Number(s||0)));const hh=Math.floor(s/3600),mm=Math.floor((s%3600)/60),ss=s%60;return hh?`${hh}h ${String(mm).padStart(2,'0')}m ${String(ss).padStart(2,'0')}s`:`${mm}m ${String(ss).padStart(2,'0')}s`;};
 const btn=(t,id='',k='primary',x='')=>`<button class="btn ${k}" id="${id}" ${x}>${t}</button>`;
 const shell=(title,subtitle,body,actions='')=>`<header class="topbar"><div class="brand">RUDRAKSH CBT EXAMINATION</div><div>${actions}</div></header><main class="container"><section class="hero"><h1>${esc(title)}</h1><p>${esc(subtitle||'Professional online CBT management system')}</p></section>${body}</main>`;
 const empty=t=>`<div class="empty">${esc(t)}</div>`;
