@@ -45,7 +45,9 @@ th{font-size:13px;white-space:nowrap}.report-option{line-height:1.45}.report-met
 /* Lightweight presentation — First Edition layout preserved */
 .hero.welcome-hero{position:relative;overflow:hidden;padding:28px 28px 26px;min-height:138px;display:flex;flex-direction:column;justify-content:center}
 .welcome-kicker{font-size:13px;letter-spacing:.22em;font-weight:800;color:var(--blue);margin-bottom:8px;text-transform:uppercase}
-.welcome-name{margin:0;font-size:clamp(34px,5vw,54px);line-height:1.05;letter-spacing:-.02em;font-weight:900;color:var(--navy);position:relative;display:inline-block;width:max-content;max-width:100%;background:linear-gradient(105deg,var(--navy) 0%,var(--navy) 43%,#f2bd45 47%,#fff0a6 50%,#f2bd45 53%,var(--navy) 57%,var(--navy) 100%);background-size:240% 100%;background-position:220% 0;background-repeat:no-repeat;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:welcomeGoldSweep 5s ease-in-out infinite}
+.welcome-name{margin:0;font-size:clamp(34px,5vw,54px);line-height:1.05;letter-spacing:-.02em;font-weight:900;color:var(--navy);position:relative;display:inline-block;width:max-content;max-width:100%;overflow:hidden;padding-right:4px}
+.welcome-name::after{content:"";position:absolute;top:-25%;bottom:-25%;left:-32%;width:24%;background:linear-gradient(105deg,transparent 0%,transparent 25%,rgba(255,255,255,.05) 38%,rgba(255,208,72,.42) 48%,rgba(255,244,180,.95) 50%,rgba(255,208,72,.42) 52%,rgba(255,255,255,.06) 62%,transparent 75%,transparent 100%);transform:skewX(-18deg) translateX(-180%);pointer-events:none;z-index:2;animation:welcomeGoldWave 5s ease-in-out infinite}
+@keyframes welcomeGoldWave{0%,74%{transform:skewX(-18deg) translateX(-180%);opacity:0}79%{opacity:0}82%{opacity:1}93%{transform:skewX(-18deg) translateX(620%);opacity:1}100%{transform:skewX(-18deg) translateX(620%);opacity:0} }
 .welcome-sub{margin:10px 0 0;color:var(--muted);font-size:14px}
 @keyframes welcomeKicker{to{opacity:1;transform:translateY(0)}}
 @keyframes welcomeName{to{opacity:1;transform:translateY(0)}}
@@ -59,7 +61,7 @@ th{font-size:13px;white-space:nowrap}.report-option{line-height:1.45}.report-met
 .section-shift-right{animation:sectionShiftRight .24s cubic-bezier(.2,.7,.2,1) both}
 @keyframes sectionShiftLeft{from{opacity:.72;transform:translateX(14px)}to{opacity:1;transform:translateX(0)}}
 @keyframes sectionShiftRight{from{opacity:.72;transform:translateX(-14px)}to{opacity:1;transform:translateX(0)}}
-@media(prefers-reduced-motion:reduce){.welcome-animate .welcome-kicker,.welcome-animate .welcome-name,.welcome-animate .welcome-sub,.section-shift-left,.section-shift-right{animation:none;opacity:1;transform:none}.welcome-name{background:none;-webkit-text-fill-color:var(--navy)}}
+@media(prefers-reduced-motion:reduce){.welcome-animate .welcome-kicker,.welcome-animate .welcome-name,.welcome-animate .welcome-sub,.section-shift-left,.section-shift-right{animation:none;opacity:1;transform:none}.welcome-name::after{animation:none;display:none}}
 @media(max-width:620px){.hero.welcome-hero{min-height:124px;padding:22px 18px}.welcome-name{font-size:34px}.welcome-kicker{font-size:11px}.welcome-sub{font-size:13px}}
 .test-summary-card{border:1px solid #d9e3f0;border-radius:12px;padding:14px;margin-top:12px;background:#fff}.test-summary-card h3{margin:0 0 4px}.test-summary-card .result-grid{grid-template-columns:repeat(6,minmax(90px,1fr))}@media(max-width:900px){.test-summary-card .result-grid{grid-template-columns:repeat(3,minmax(90px,1fr))}}@media(max-width:600px){.test-summary-card .result-grid{grid-template-columns:repeat(2,minmax(90px,1fr))}}</style>
 </head>
